@@ -1,7 +1,5 @@
 import streamlit as st
 import pandas as pd
-import plotly.express as px
-import plotly.graph_objects as go
 
 # Set Page Config
 st.set_page_config(
@@ -19,9 +17,9 @@ uploaded_file = st.file_uploader("Upload GPR Report (.xls, .xlsx)", type=["xls",
 @st.cache_data
 def load_data(file):
     try:
-        # Read excel file (handles both xls via xlrd and xlsx via openpyxl)
+        # Read excel file
         df = pd.read_excel(file)
-        # Clean column names (strip spaces, uppercase)
+        # Clean column names
         df.columns = df.columns.astype(str).str.strip()
         return df
     except Exception as e:
@@ -34,10 +32,8 @@ if uploaded_file is not None:
     if df is not None:
         st.sidebar.header("🔍 Filter Controls")
         
-        # Identify columns dynamically or via common naming conventions
         cols = df.columns.tolist()
         
-        # Helper function to find matching columns
         def find_col(keywords):
             for col in cols:
                 if any(kw.lower() in col.lower() for kw in keywords):
@@ -57,7 +53,6 @@ if uploaded_file is not None:
 
         selected_sub_divs = []
         if sub_div_col:
-            # Filter sub-divisions based on selected divisions if division column exists
             temp_df = df[df[div_col].isin(selected_divisions)] if div_col and selected_divisions else df
             sub_divs = sorted(temp_df[sub_div_col].dropna().unique().tolist())
             selected_sub_divs = st.sidebar.multiselect("Select Sub-Division(s)", sub_divs, default=sub_divs)
@@ -91,60 +86,37 @@ if uploaded_file is not None:
         with col1:
             st.metric(label="Total Applications", value=f"{len(filtered_df):,}")
         with col2:
-            if sub_div_col:
-                st.metric(label="Sub-Divisions Covered", value=filtered_df[sub_div_col].nunique())
-            else:
-                st.metric(label="Sub-Divisions Covered", value="N/A")
+            st.metric(label="Sub-Divisions Covered", value=filtered_df[sub_div_col].nunique() if sub_div_col else "N/A")
         with col3:
-            if cat_col:
-                st.metric(label="Categories", value=filtered_df[cat_col].nunique())
-            else:
-                st.metric(label="Categories", value="N/A")
+            st.metric(label="Categories", value=filtered_df[cat_col].nunique() if cat_col else "N/A")
         with col4:
-            if div_col:
-                st.metric(label="Divisions", value=filtered_df[div_col].nunique())
-            else:
-                st.metric(label="Divisions", value="N/A")
+            st.metric(label="Divisions", value=filtered_df[div_col].nunique() if div_col else "N/A")
 
-        # --- Visualizations ---
+        # --- Native Visualizations ---
         st.markdown("---")
         c1, c2 = st.columns(2)
 
         with c1:
             if sub_div_col:
                 st.subheader("Applications by Sub-Division")
-                sub_div_counts = filtered_df[sub_div_col].value_counts().reset_index()
-                sub_div_counts.columns = ['Sub-Division', 'Count']
-                fig_sub = px.bar(sub_div_counts, x='Sub-Division', y='Count', color='Count', 
-                                 color_continuousscale='Blues', template='plotly_white')
-                fig_sub.update_layout(xaxis_tickangle=-45)
-                st.plotly_chart(fig_sub, use_container_width=True)
+                sub_div_counts = filtered_df[sub_div_col].value_locals() if hasattr(filtered_df[sub_div_col], 'value_locals') else filtered_df[sub_div_col].value_counts()
+                st.bar_chart(sub_div_counts)
             else:
                 st.info("Sub-division column not detected automatically.")
 
         with c2:
             if cat_col:
                 st.subheader("Applications by Category")
-                cat_counts = filtered_df[cat_col].value_counts().reset_index()
-                cat_counts.columns = ['Category', 'Count']
-                fig_cat = px.pie(cat_counts, names='Category', values='Count', hole=0.4, template='plotly_white')
-                st.plotly_chart(fig_cat, use_container_width=True)
+                cat_counts = filtered_df[cat_col].value_counts()
+                st.bar_chart(cat_counts)
             else:
                 st.info("Category column not detected automatically.")
-
-        if status_col and div_col:
-            st.markdown("---")
-            st.subheader("Status / Application Type Breakdown per Division")
-            status_div = filtered_df.groupby([div_col, status_col]).size().reset_index(name='Count')
-            fig_stack = px.bar(status_div, x=div_col, y='Count', color=status_col, barmode='group', template='plotly_white')
-            st.plotly_chart(fig_stack, use_container_width=True)
 
         # --- Detailed Data View & Download ---
         st.markdown("---")
         st.subheader("📋 Detailed Application Records")
         st.dataframe(filtered_df, use_container_width=True)
 
-        # Download CSV button
         csv = filtered_df.to_csv(index=False).encode('utf-8')
         st.download_button(
             label="📥 Download Filtered Data as CSV",
